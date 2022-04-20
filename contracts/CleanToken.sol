@@ -14,25 +14,11 @@ interface IUniswapPair {
 contract CleanToken is ERC20, ERC20Burnable, Ownable {
     uint256 public fee = 1;
     address public treasury;
-    mapping(address => bool) public isValidMinter;
     mapping(address => bool) public isFeePair;
-
-    modifier onlyMinter() {
-        require(isValidMinter[msg.sender], "Caller has no minter role");
-        _;
-    }
 
     constructor(address _treasury) ERC20("CleanToken", "CLT") {
         _mint(msg.sender, 100000000000e18);
         treasury = _treasury;
-    }
-
-    function addMinter(address newMinter, bool isValid) public onlyOwner {
-        isValidMinter[newMinter] = isValid;
-    }
-
-    function mint(address to, uint256 amount) public onlyMinter {
-        _mint(to, amount);
     }
 
     function transferFrom(
