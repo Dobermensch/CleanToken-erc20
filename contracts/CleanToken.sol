@@ -5,16 +5,20 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
-interface IUniswapPair {
+interface IUniswapV2Pair {
     function token0() external view returns (address);
-
     function token1() external view returns (address);
+}
+
+interface IUniswapV2Factory {
+    function getPair(address tokenA, address tokenB) external view returns (address pair);
 }
 
 contract CleanToken is ERC20, ERC20Burnable, Ownable {
     uint256 public fee = 1;
     address public treasury;
     mapping(address => bool) public isFeePair;
+    IUniswapV2Factory constant v2Factory = IUniswapV2Factory(address(0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f));
 
     constructor(address _treasury) ERC20("CleanToken", "CLT") {
         _mint(msg.sender, 100000000000e18);
@@ -54,7 +58,7 @@ contract CleanToken is ERC20, ERC20Burnable, Ownable {
         address recipient,
         uint256 amount
     ) internal returns (bool) {
-        if (isLiquidityPool(recipient)) {
+        if (isUniswapV2Pair(recipient)) {
             uint256 burnAmount = (amount * fee) / 100;
             uint256 feeAmount = (amount * fee) / 100;
             _transfer(sender, recipient, amount - (burnAmount + feeAmount));
@@ -67,37 +71,28 @@ contract CleanToken is ERC20, ERC20Burnable, Ownable {
         return true;
     }
 
-    function getPoolToken(
-        address pool,
-        string memory signature,
-        function() external view returns (address) getter
-    ) private returns (address token) {
-        (bool success, ) = pool.call(abi.encodeWithSignature(signature));
-        if (success) {
-            uint32 size;
-            assembly {
-                size := extcodesize(pool)
-            }
-            if (size > 0) {
-                return getter();
-            }
+    function isUniswapV2Pair(address target) public view returns (bool) {
+        if (target.code.length == 0) {
+            return false;
         }
-    }
 
-    function isLiquidityPool(address recipient) public returns (bool) {
-        address token0 = getPoolToken(
-            recipient,
-            "token0()",
-            IUniswapPair(recipient).token0
-        );
-        address token1 = getPoolToken(
-            recipient,
-            "token1()",
-            IUniswapPair(recipient).token1
-        );
+        IUniswapV2Pair pairContract = IUniswapV2Pair(target);
 
-        return (isFeePair[recipient] ||
-            token0 == address(this) ||
-            token1 == address(this));
+        address token0;
+        address token1;
+
+        try pairContract.token0() returns (address _token0) {
+            token0 = _token0;
+        } catch (bytes memory) {
+            return false;
+        }
+
+        try pairContract.token1() returns (address _token1) {
+            token1 = _token1;
+        } catch (bytes memory) {
+            return false;
+        }
+
+        return target == v2Factory.getPair(token0, token1);
     }
 }
